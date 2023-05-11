@@ -1,16 +1,14 @@
 package nl.hemiron.objectstorage.controller;
 
-import io.minio.errors.ErrorResponseException;
-import io.minio.errors.MinioException;
+import io.minio.errors.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import nl.hemiron.objectstorage.exceptions.BadRequestException;
-import nl.hemiron.objectstorage.exceptions.ConflictException;
-import nl.hemiron.objectstorage.exceptions.InternalServerErrorException;
+import nl.hemiron.objectstorage.exceptions.*;
 import nl.hemiron.objectstorage.model.BucketDb;
 import nl.hemiron.objectstorage.model.request.CreateBucketRequest;
 import nl.hemiron.objectstorage.model.response.CreateBucketResponse;
+import nl.hemiron.objectstorage.model.response.GetBucketResponse;
 import nl.hemiron.objectstorage.service.MinioService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,6 +17,7 @@ import org.springframework.web.bind.annotation.*;
 import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
 
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
@@ -62,12 +61,44 @@ public class BucketController {
         }
     }
 
-    // TODO: See issue #9 - Retrieve bucket
-    @GetMapping("/{name}")
-    public ResponseEntity<?> getBucket(@PathVariable String name) {
-        return new ResponseEntity<>(
-                name,
-                HttpStatus.OK
-        );
+    @GetMapping
+    @Operation(summary = "Get bucket information of all buckets", responses = {
+            @ApiResponse(responseCode = "200", description = "Bucket information retrieved succcessfully"),
+            @ApiResponse(responseCode = "500", description = "Buckets could not be retrieved due to an unexpected error")
+    })
+    public ResponseEntity<List<GetBucketResponse>> getBuckets() {
+        try {
+            var response = this.minioService.getBuckets();
+            return new ResponseEntity<>(
+                    response,
+                    HttpStatus.OK
+            );
+        } catch (ServerException | InsufficientDataException | ErrorResponseException | IOException |
+                 InternalException | XmlParserException | InvalidResponseException | InvalidKeyException |
+                 NoSuchAlgorithmException e) {
+            throw new InternalServerErrorException(e.getMessage());
+        }
+    }
+
+    @GetMapping("/{bucketName}")
+    @Operation(summary = "Get bucket information of a single bucket", responses = {
+            @ApiResponse(responseCode = "200", description = "Bucket information retrieved succcessfully"),
+            @ApiResponse(responseCode = "404", description = "No bucket found with this name"),
+            @ApiResponse(responseCode = "500", description = "Bucket could not be retrieved due to an unexpected error")
+    })
+    public ResponseEntity<GetBucketResponse> getBucket(@PathVariable final String bucketName) {
+        try {
+            var response = this.minioService.getBucketByName(bucketName);
+            return new ResponseEntity<>(
+                    response,
+                    HttpStatus.OK
+            );
+        } catch (BucketNotFoundException e) {
+            throw new NotFoundException(e.getMessage());
+        } catch (ServerException | InsufficientDataException | ErrorResponseException | IOException |
+                 InternalException | XmlParserException | InvalidResponseException | InvalidKeyException |
+                 NoSuchAlgorithmException e) {
+            throw new InternalServerErrorException(e.getMessage());
+        }
     }
 }
