@@ -1,11 +1,8 @@
 package nl.hemiron.objectstorage.service;
 
-import io.minio.BucketExistsArgs;
-import io.minio.ListObjectsArgs;
-import io.minio.MakeBucketArgs;
-import io.minio.MinioClient;
-import io.minio.Result;
+import io.minio.*;
 import io.minio.errors.*;
+import io.minio.http.Method;
 import io.minio.messages.Bucket;
 import io.minio.messages.Item;
 import jakarta.annotation.PostConstruct;
@@ -15,6 +12,7 @@ import nl.hemiron.objectstorage.model.BucketDb;
 import nl.hemiron.objectstorage.model.response.GetBucketResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.security.InvalidKeyException;
@@ -50,14 +48,14 @@ public class MinioService {
                 .build();
     }
 
-    public BucketDb createBucket(String name) throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
+    public BucketDb createBucket(String bucketName) throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
         minioClient.makeBucket(
                 MakeBucketArgs.builder()
-                .bucket(name).build()
+                .bucket(bucketName).build()
         );
 
         return bucketDAO.save(
-                new BucketDb(name)
+                new BucketDb(bucketName)
         );
     }
 
@@ -72,17 +70,12 @@ public class MinioService {
         return responses;
     }
 
-    public GetBucketResponse getBucketByName(final String name) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException, BucketNotFoundException {
-        var bucketExists = minioClient.bucketExists(BucketExistsArgs.builder()
-                .bucket(name)
-                .build());
-        if (!bucketExists) {
-            throw new BucketNotFoundException("Bucket with name " + name + " not found");
-        }
+    public GetBucketResponse getBucketByName(final String bucketName) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException, BucketNotFoundException {
+        verifyBucketExists(bucketName);
 
         Iterable<Result<Item>> bucketObjects = minioClient.listObjects(
                 ListObjectsArgs.builder()
-                        .bucket(name)
+                        .bucket(bucketName)
                         .recursive(true)
                         .build());
 
@@ -93,6 +86,31 @@ public class MinioService {
             amountOfObjects++;
         }
 
-        return new GetBucketResponse(name, totalSize, amountOfObjects);
+        return new GetBucketResponse(bucketName, totalSize, amountOfObjects);
+    }
+
+    public String getUploadObjectURL(String bucketName, String objectPath, MultipartFile multipartFile) throws BucketNotFoundException, ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+        verifyBucketExists(bucketName);
+
+        return minioClient.getPresignedObjectUrl(
+                GetPresignedObjectUrlArgs.builder()
+                        .method(Method.PUT)
+                        .bucket(bucketName)
+                        .object(objectPath + "/" + multipartFile.getOriginalFilename())
+                        .expiry(60 * 60) // TODO: Discuss what would be a reasonable expiry time
+                        .build()
+        );
+    }
+
+    private void verifyBucketExists(String bucketName) throws BucketNotFoundException, ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+        boolean bucketExists = minioClient.bucketExists(
+                BucketExistsArgs.builder()
+                    .bucket(bucketName)
+                    .build()
+        );
+
+        if (!bucketExists) {
+            throw new BucketNotFoundException("Bucket with name " + bucketName + " not found");
+        }
     }
 }
