@@ -83,7 +83,7 @@ public class BucketController {
     @GetMapping("/{bucketName}")
     @Operation(summary = "Get bucket information of a single bucket", responses = {
             @ApiResponse(responseCode = "200", description = "Bucket information retrieved succcessfully"),
-            @ApiResponse(responseCode = "404", description = "No bucket found with this name"),
+            @ApiResponse(responseCode = "404", description = "Bucket with specified name does not exist"),
             @ApiResponse(responseCode = "500", description = "Bucket could not be retrieved due to an unexpected error")
     })
     public ResponseEntity<GetBucketResponse> getBucket(@PathVariable final String bucketName) {
