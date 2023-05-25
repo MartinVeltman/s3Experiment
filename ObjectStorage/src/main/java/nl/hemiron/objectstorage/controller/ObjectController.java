@@ -12,6 +12,8 @@ import nl.hemiron.objectstorage.model.request.UploadFileToBucketRequest;
 import nl.hemiron.objectstorage.model.response.UploadFileToBucketResponse;
 import nl.hemiron.objectstorage.service.ExchangeService;
 import nl.hemiron.objectstorage.service.MinioService;
+import nl.hemiron.objectstorage.service.StringUtils;
+import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpClientErrorException;
@@ -71,4 +73,33 @@ public class ObjectController {
         }
     }
 
+    @GetMapping(value = "/{objectName}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
+    @Operation(summary = "Download a single object", responses = {
+            @ApiResponse(responseCode = "200", description = "Object downloaded successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid base64 object name"),
+            @ApiResponse(responseCode = "404", description = "Could not find bucket and/or object with this name"),
+            @ApiResponse(responseCode = "500", description = "Object could not be retrieved due to an unexpected error")
+    })
+    public ResponseEntity<InputStreamResource> getObject(@PathVariable String bucketName, @PathVariable String objectName) throws IOException {
+        try {
+            var inputstream = this.minioService.getObject(bucketName, objectName);
+
+            var filename = StringUtils.getFilenameFromBase64(objectName);
+            HttpHeaders httpHeaders = new HttpHeaders();
+            httpHeaders.add("Content-Disposition", "attachment; filename=" + filename);
+
+            return new ResponseEntity<>(
+                    new InputStreamResource(inputstream),
+                    httpHeaders,
+                    HttpStatus.OK
+            );
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(e.getMessage());
+        } catch (ErrorResponseException e) {
+            throw new NotFoundException(e.getMessage());
+        } catch (ServerException | InternalException | XmlParserException | InvalidResponseException |
+                 InvalidKeyException | NoSuchAlgorithmException | InsufficientDataException e) {
+            throw new InternalServerErrorException(e.getMessage());
+        }
+    }
 }

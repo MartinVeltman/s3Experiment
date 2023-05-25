@@ -1,12 +1,14 @@
 package nl.hemiron.objectstorage.service;
 
 
+import io.minio.GetObjectResponse;
 import io.minio.MinioClient;
 import io.minio.Result;
 import io.minio.errors.*;
 import io.minio.messages.Item;
 import nl.hemiron.objectstorage.dao.BucketDAO;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
+import okhttp3.Headers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -112,6 +114,27 @@ class MinioServiceTest {
         // Assert
         assertThat(actual.size, is(58_139L));
         assertThat(actual.amountOfObjects, is(2));
+    }
+
+    @Test
+    void getObject_WithBucketNameAndEncodedObjectName_ReturnsObject()
+            throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException {
+        // Arrange
+        var headers = new Headers.Builder().build();
+        var response = new GetObjectResponse(
+                headers, "s1057392-bucket", "eu-west-3",
+                "healthForYou/rightToAccess/a18d2f3b-7809-4efb-865c-113a1105fa98.pdf", null);
+        when(this.minioClient.getObject(any())).thenReturn(response);
+        when(this.minioClient.bucketExists(any())).thenReturn(true);
+
+        // Act
+        var actual = sut.getObject("s1057392-bucket", "aGVhbHRoRm9yWW91L3JpZ2h0VG9BY2Nlc3NzL2ExOGQyZjNiLTc4MDktNGVmYi04NjVjLTExM2ExMTA1ZmE5OC5wZGY=");
+        var actualBucket = actual.bucket();
+        var actualObject = actual.object();
+
+        // Assert
+        assertThat(actualBucket, is("s1057392-bucket"));
+        assertThat(actualObject, is("healthForYou/rightToAccess/a18d2f3b-7809-4efb-865c-113a1105fa98.pdf"));
     }
 
 }
