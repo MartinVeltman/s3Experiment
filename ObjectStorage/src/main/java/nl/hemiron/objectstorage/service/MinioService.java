@@ -102,6 +102,16 @@ public class MinioService {
         );
     }
 
+    public GetObjectResponse getObject(String bucketName, String objectName) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+        verifyBucketExists(bucketName);
+
+        var decodedName = StringUtils.decodeBase64(objectName);
+        return minioClient.getObject(GetObjectArgs.builder()
+                .bucket(bucketName)
+                .object(decodedName)
+                .build());
+    }
+
     private void verifyBucketExists(String bucketName) throws BucketNotFoundException, ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
         boolean bucketExists = minioClient.bucketExists(
                 BucketExistsArgs.builder()
