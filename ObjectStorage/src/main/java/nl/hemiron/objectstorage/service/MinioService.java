@@ -1,5 +1,6 @@
 package nl.hemiron.objectstorage.service;
 
+import com.google.common.collect.Iterables;
 import io.minio.*;
 import io.minio.errors.*;
 import io.minio.http.Method;
@@ -7,8 +8,10 @@ import io.minio.messages.Bucket;
 import io.minio.messages.Item;
 import jakarta.annotation.PostConstruct;
 import nl.hemiron.objectstorage.dao.BucketDAO;
+import nl.hemiron.objectstorage.exceptions.BucketNotEmptyException;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
 import nl.hemiron.objectstorage.model.BucketDb;
+import nl.hemiron.objectstorage.model.response.DeleteBucketResponse;
 import nl.hemiron.objectstorage.model.response.GetBucketResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -72,12 +75,7 @@ public class MinioService {
 
     public GetBucketResponse getBucketByName(final String bucketName) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException, BucketNotFoundException {
         verifyBucketExists(bucketName);
-
-        Iterable<Result<Item>> bucketObjects = minioClient.listObjects(
-                ListObjectsArgs.builder()
-                        .bucket(bucketName)
-                        .recursive(true)
-                        .build());
+        Iterable<Result<Item>> bucketObjects = getObjectsInBucket(bucketName);
 
         long totalSize = 0L;
         int amountOfObjects = 0;
@@ -112,6 +110,30 @@ public class MinioService {
                 .build());
     }
 
+    public BucketDb deleteBucket(final String bucketName, final boolean force) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+        verifyBucketExists(bucketName);
+        Iterable<Result<Item>> bucketObjects = getObjectsInBucket(bucketName);
+        if (force) {
+            for (Result<Item > bucketObject : bucketObjects) {
+                minioClient.removeObject(RemoveObjectArgs.builder()
+                        .bucket(bucketName)
+                        .object(bucketObject.get().objectName())
+                        .build());
+            }
+        }
+        if (Iterables.size(bucketObjects) > 0)
+            throw new BucketNotEmptyException("Bucket not empty, consider emptying it or adding 'force-delete' header to your request");
+        minioClient.removeBucket(RemoveBucketArgs.builder()
+                .bucket(bucketName)
+                .build());
+        try {
+            BucketDb bucket = bucketDAO.getByBucketName(bucketName);
+            bucketDAO.remove(bucket);
+            return bucket;
+        } catch (Exception ignored) {}
+        return new BucketDb(bucketName);
+    }
+
     private void verifyBucketExists(String bucketName) throws BucketNotFoundException, ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
         boolean bucketExists = minioClient.bucketExists(
                 BucketExistsArgs.builder()
@@ -122,5 +144,13 @@ public class MinioService {
         if (!bucketExists) {
             throw new BucketNotFoundException("Bucket with name " + bucketName + " not found");
         }
+    }
+
+    private Iterable<Result<Item>> getObjectsInBucket(final String bucketName) {
+        return minioClient.listObjects(
+                ListObjectsArgs.builder()
+                        .bucket(bucketName)
+                        .recursive(true)
+                        .build());
     }
 }

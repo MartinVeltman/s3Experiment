@@ -16,4 +16,12 @@ public class BucketDAO {
     public BucketDb save(BucketDb bucketDb) {
         return this.bucketRepository.save(bucketDb);
     }
+
+    public BucketDb getByBucketName(String bucketName) {
+        return this.bucketRepository.findByName(bucketName);
+    }
+
+    public void remove(BucketDb bucketDb) {
+        this.bucketRepository.delete(bucketDb);
+    }
 }

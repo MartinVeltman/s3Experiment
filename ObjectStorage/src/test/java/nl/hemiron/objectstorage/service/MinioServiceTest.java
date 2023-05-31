@@ -1,12 +1,14 @@
 package nl.hemiron.objectstorage.service;
 
 
+import com.google.common.collect.Iterables;
 import io.minio.GetObjectResponse;
 import io.minio.MinioClient;
 import io.minio.Result;
 import io.minio.errors.*;
 import io.minio.messages.Item;
 import nl.hemiron.objectstorage.dao.BucketDAO;
+import nl.hemiron.objectstorage.exceptions.BucketNotEmptyException;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
 import okhttp3.Headers;
 import org.junit.jupiter.api.BeforeEach;
@@ -114,6 +116,26 @@ class MinioServiceTest {
         // Assert
         assertThat(actual.size, is(58_139L));
         assertThat(actual.amountOfObjects, is(2));
+    }
+
+    @Test
+    void deleteBucket_WithObjectsInBucketAndNoForceDelete_ThrowsBucketNotEmptyException() throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+        //Arrange
+        var name = "mybucket";
+        var bucketObjects = new ArrayList<Result<Item>>();
+        bucketObjects.add(new Result<Item>(new Item() {}));
+
+        boolean forceDelete = false;
+
+        when(this.minioClient.bucketExists(any())).thenReturn(true);
+        when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
+
+        //Act
+        var exception = assertThrows(BucketNotEmptyException.class, () -> sut.deleteBucket(name, forceDelete));
+
+        //Assert
+        var actual = exception.getMessage();
+        assertThat(actual, is("Bucket not empty, consider emptying it or adding 'force-delete' header to your request"));
     }
 
     @Test
