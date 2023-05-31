@@ -8,6 +8,7 @@ import nl.hemiron.objectstorage.exceptions.*;
 import nl.hemiron.objectstorage.model.BucketDb;
 import nl.hemiron.objectstorage.model.request.CreateBucketRequest;
 import nl.hemiron.objectstorage.model.response.CreateBucketResponse;
+import nl.hemiron.objectstorage.model.response.DeleteBucketResponse;
 import nl.hemiron.objectstorage.model.response.GetBucketResponse;
 import nl.hemiron.objectstorage.service.MinioService;
 import org.springframework.http.HttpStatus;
@@ -63,7 +64,7 @@ public class BucketController {
 
     @GetMapping
     @Operation(summary = "Get bucket information of all buckets", responses = {
-            @ApiResponse(responseCode = "200", description = "Bucket information retrieved succcessfully"),
+            @ApiResponse(responseCode = "200", description = "Bucket information retrieved successfully"),
             @ApiResponse(responseCode = "500", description = "Buckets could not be retrieved due to an unexpected error")
     })
     public ResponseEntity<List<GetBucketResponse>> getBuckets() {
@@ -95,6 +96,35 @@ public class BucketController {
             );
         } catch (BucketNotFoundException e) {
             throw new NotFoundException(e.getMessage());
+        } catch (ServerException | InsufficientDataException | ErrorResponseException | IOException |
+                 InternalException | XmlParserException | InvalidResponseException | InvalidKeyException |
+                 NoSuchAlgorithmException e) {
+            throw new InternalServerErrorException(e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/{bucketName}")
+    @Operation(summary = "Delete a single bucket", responses = {
+            @ApiResponse(responseCode = "200", description = "Bucket deleted successfully"),
+            @ApiResponse(responseCode = "404", description = "No bucket found with this name"),
+            @ApiResponse(responseCode = "409", description = "Bucket could not be deleted due to it not being empty"),
+            @ApiResponse(responseCode = "500", description = "Bucket could not be deleted due to an unexpected error")
+    })
+    public ResponseEntity<DeleteBucketResponse> deleteBucket(
+            @PathVariable final String bucketName,
+            @RequestHeader(value = "force-delete", defaultValue = "false" ) boolean forceDelete) {
+        try {
+            var bucket = this.minioService.deleteBucket(bucketName, forceDelete);
+            return new ResponseEntity<>(
+                    new DeleteBucketResponse(
+                            bucket.getName()
+                    ),
+                    HttpStatus.OK
+            );
+        } catch (BucketNotFoundException e) {
+            throw new NotFoundException(e.getMessage());
+        } catch (BucketNotEmptyException e) {
+            throw new ConflictException(e.getMessage());
         } catch (ServerException | InsufficientDataException | ErrorResponseException | IOException |
                  InternalException | XmlParserException | InvalidResponseException | InvalidKeyException |
                  NoSuchAlgorithmException e) {
