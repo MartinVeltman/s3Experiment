@@ -12,6 +12,11 @@ public class StringUtils {
         return new String(decodedBytes);
     }
 
+    public static String encodeBase64(String decoded) {
+        var encodedBytes = Base64.getEncoder().encode(decoded.getBytes());
+        return new String(encodedBytes);
+    }
+
     public static String getFilenameFromBase64(String encoded) {
         var decoded = decodeBase64(encoded);
         var splitString = decoded.split("/");

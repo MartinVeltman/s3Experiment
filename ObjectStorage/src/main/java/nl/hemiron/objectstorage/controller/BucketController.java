@@ -69,6 +69,11 @@ public class BucketController {
     public ResponseEntity<List<GetBucketResponse>> getBuckets() {
         try {
             var response = this.minioService.getBuckets();
+
+            for (GetBucketResponse getBucketResponse : response) {
+                getBucketResponse.add(linkTo(methodOn(BucketController.class).getBucket(getBucketResponse.name)).withSelfRel());
+            }
+
             return new ResponseEntity<>(
                     response,
                     HttpStatus.OK

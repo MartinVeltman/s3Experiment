@@ -1,9 +1,10 @@
 package nl.hemiron.objectstorage.model.response;
 
 import lombok.AllArgsConstructor;
+import org.springframework.hateoas.RepresentationModel;
 
 @AllArgsConstructor
-public class GetBucketResponse {
+public class GetBucketResponse extends RepresentationModel<GetBucketResponse> {
     /**
      * Name of the bucket
      */
