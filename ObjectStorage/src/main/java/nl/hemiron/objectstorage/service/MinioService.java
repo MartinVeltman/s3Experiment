@@ -15,7 +15,6 @@ import nl.hemiron.objectstorage.model.response.DeleteBucketResponse;
 import nl.hemiron.objectstorage.model.response.GetBucketResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.security.InvalidKeyException;
@@ -87,14 +86,14 @@ public class MinioService {
         return new GetBucketResponse(bucketName, totalSize, amountOfObjects);
     }
 
-    public String getUploadObjectURL(String bucketName, String objectPath, MultipartFile multipartFile) throws BucketNotFoundException, ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+    public String getUploadObjectURL(String bucketName, String objectName) throws BucketNotFoundException, ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
         verifyBucketExists(bucketName);
 
         return minioClient.getPresignedObjectUrl(
                 GetPresignedObjectUrlArgs.builder()
                         .method(Method.PUT)
                         .bucket(bucketName)
-                        .object(objectPath + "/" + multipartFile.getOriginalFilename())
+                        .object(objectName)
                         .expiry(60 * 60) // TODO: Discuss what would be a reasonable expiry time
                         .build()
         );

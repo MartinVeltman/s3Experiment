@@ -24,6 +24,9 @@ import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
+
 @RestController
 @RequestMapping("/buckets/{bucketName}/objects")
 @Tag(name = "ObjectController", description = "Endpoints for everything related to MinIO bucket objects")
@@ -49,17 +52,18 @@ public class ObjectController {
         try {
             MultipartFile multipartFile = uploadFileToBucketRequest.getObject();
 
+            String objectName = uploadFileToBucketRequest.getObjectPath() + "/" + multipartFile.getOriginalFilename();
+
             String uploadObjectURL = minioService.getUploadObjectURL(
                     bucketName,
-                    uploadFileToBucketRequest.getObjectPath(),
-                    multipartFile
+                    objectName
             );
 
             exchangeService.put(multipartFile, uploadObjectURL);
 
             return new ResponseEntity<>(
-                    // TODO: See issue #33 - Add HATEOAS links for uploaded files
-                    new UploadFileToBucketResponse(),
+                    new UploadFileToBucketResponse()
+                            .add(linkTo(methodOn(ObjectController.class).getObject(bucketName, StringUtils.encodeBase64(objectName))).withSelfRel()),
                     HttpStatus.OK
             );
         } catch (BucketNotFoundException e) {
