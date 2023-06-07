@@ -10,9 +10,10 @@ import jakarta.annotation.PostConstruct;
 import nl.hemiron.objectstorage.dao.BucketDAO;
 import nl.hemiron.objectstorage.exceptions.BucketNotEmptyException;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
+import nl.hemiron.objectstorage.exceptions.NotFoundException;
 import nl.hemiron.objectstorage.model.BucketDb;
-import nl.hemiron.objectstorage.model.response.DeleteBucketResponse;
 import nl.hemiron.objectstorage.model.response.GetBucketResponse;
+import nl.hemiron.objectstorage.model.response.ItemResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -131,6 +132,35 @@ public class MinioService {
             return bucket;
         } catch (Exception ignored) {}
         return new BucketDb(bucketName);
+    }
+
+    public List<ItemResponse> getDirectoryContents(String bucketName, String directoryName) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+        verifyBucketExists(bucketName);
+
+        var decodedName = StringUtils.decodeBase64(directoryName);
+        var directoryContents = minioClient.listObjects(ListObjectsArgs.builder()
+                .bucket(bucketName)
+                .prefix(decodedName)
+                .recursive(false)
+                .build());
+
+        if (Iterables.size(directoryContents) == 0) {
+            throw new NotFoundException("Directory with name " + decodedName + " not found");
+        }
+
+        List<ItemResponse> items = new ArrayList<>();
+        for(Result<Item> itemResult : directoryContents) {
+            var item = itemResult.get();
+            if (item.isDir()) {
+                items.add(new ItemResponse(item.objectName(), item.isDir()));
+                continue;
+            }
+            items.add(new ItemResponse(
+                    item.etag(), item.objectName(), item.lastModified(), item.owner(), item.size(),
+                    item.storageClass(), item.isLatest(), item.versionId(), item.userMetadata(), item.isDir())
+            );
+        }
+        return items;
     }
 
     private void verifyBucketExists(String bucketName) throws BucketNotFoundException, ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {

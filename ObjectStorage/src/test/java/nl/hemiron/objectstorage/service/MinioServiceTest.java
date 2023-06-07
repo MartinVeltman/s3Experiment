@@ -10,6 +10,7 @@ import io.minio.messages.Item;
 import nl.hemiron.objectstorage.dao.BucketDAO;
 import nl.hemiron.objectstorage.exceptions.BucketNotEmptyException;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
+import nl.hemiron.objectstorage.exceptions.NotFoundException;
 import okhttp3.Headers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,6 +21,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.time.ZonedDateTime;
 import java.util.ArrayList;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -157,6 +159,69 @@ class MinioServiceTest {
         // Assert
         assertThat(actualBucket, is("s1057392-bucket"));
         assertThat(actualObject, is("healthForYou/rightToAccess/a18d2f3b-7809-4efb-865c-113a1105fa98.pdf"));
+    }
+
+    @Test
+    void getDirectoryContents_WithDirectoryThatDoesNotExist_ThrowsNotFoundException()
+            throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException {
+        //Arrange
+        var bucketObjects = new ArrayList<Result<Item>>();
+
+        when(this.minioClient.bucketExists(any())).thenReturn(true);
+        when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
+
+        //Act
+        var exception = assertThrows(NotFoundException.class,
+                () -> sut.getDirectoryContents("mybucket", "dGhpc0RpcmVjdG9yeURvZXNOb3RFeGlzdC8="));
+
+        //Assert
+        var actual = exception.getMessage();
+        assertThat(actual, is("Directory with name thisDirectoryDoesNotExist/ not found"));
+    }
+
+    @Test
+    void getDirectoryContents_WithDirectoryContainingFileAndSubdirectory_ReturnsBothAsItemResponse()
+            throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException {
+        //Arrange
+        var bucketObjects = new ArrayList<Result<Item>>();
+        var object = new Result<Item>(new Item() {
+            @Override
+            public String objectName() {
+                return "eeyore.png";
+            }
+
+            @Override
+            public ZonedDateTime lastModified() {
+                return ZonedDateTime.now();
+            }
+        });
+        var subdirectory = new Result<Item>(new Item() {
+            @Override
+            public String objectName() {
+                return "videos/";
+            }
+
+            @Override
+            public boolean isDir() {
+                return true;
+            }
+        });
+        bucketObjects.add(object);
+        bucketObjects.add(subdirectory);
+
+        when(this.minioClient.bucketExists(any())).thenReturn(true);
+        when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
+
+        //Act
+        var actual = sut.getDirectoryContents("mybucket", "Lw==");
+
+        //Assert
+        assertThat(actual.size(), is(2));
+        var first = actual.get(0);
+        assertThat(first.getObjectName(), is("eeyore.png"));
+        var second = actual.get(1);
+        assertThat(second.getObjectName(), is("videos/"));
+        assertThat(second.isDir(), is(true));
     }
 
 }
