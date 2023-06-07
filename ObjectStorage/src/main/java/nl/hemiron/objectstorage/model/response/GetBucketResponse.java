@@ -16,7 +16,7 @@ public class GetBucketResponse extends RepresentationModel<GetBucketResponse> {
     public final long size;
 
     /**
-     * Amount of objects in the bucket. Folders are not counted as objects
+     * Amount of objects in the bucket. Directories are not counted as objects
      */
     public final int amountOfObjects;
 }

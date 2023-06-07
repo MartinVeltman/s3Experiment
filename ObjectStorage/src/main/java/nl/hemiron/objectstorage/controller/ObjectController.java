@@ -9,6 +9,7 @@ import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
 import nl.hemiron.objectstorage.exceptions.InternalServerErrorException;
 import nl.hemiron.objectstorage.exceptions.NotFoundException;
 import nl.hemiron.objectstorage.model.request.UploadFileToBucketRequest;
+import nl.hemiron.objectstorage.model.response.ItemResponse;
 import nl.hemiron.objectstorage.model.response.UploadFileToBucketResponse;
 import nl.hemiron.objectstorage.service.ExchangeService;
 import nl.hemiron.objectstorage.service.MinioService;
@@ -23,6 +24,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.util.List;
 
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
@@ -41,7 +43,7 @@ public class ObjectController {
         this.exchangeService = exchangeService;
     }
 
-    @PostMapping(consumes = { "multipart/form-data" })
+    @PostMapping(consumes = {"multipart/form-data"})
     @Operation(summary = "Upload multipart file to bucket", responses = {
             @ApiResponse(responseCode = "200", description = "Multipart file uploaded successfully to bucket"),
             @ApiResponse(responseCode = "400", description = "Specified object path is invalid"),
@@ -63,7 +65,7 @@ public class ObjectController {
 
             return new ResponseEntity<>(
                     new UploadFileToBucketResponse()
-                            .add(linkTo(methodOn(ObjectController.class).getObject(bucketName, StringUtils.encodeBase64(objectName))).withSelfRel()),
+                            .add(linkTo(methodOn(ObjectController.class).downloadObject(bucketName, StringUtils.encodeBase64(objectName))).withSelfRel()),
                     HttpStatus.OK
             );
         } catch (BucketNotFoundException e) {
@@ -84,7 +86,7 @@ public class ObjectController {
             @ApiResponse(responseCode = "404", description = "Could not find bucket and/or object with this name"),
             @ApiResponse(responseCode = "500", description = "Object could not be retrieved due to an unexpected error")
     })
-    public ResponseEntity<InputStreamResource> getObject(@PathVariable String bucketName, @PathVariable String objectName) throws IOException {
+    public ResponseEntity<InputStreamResource> downloadObject(@PathVariable String bucketName, @PathVariable String objectName) throws IOException {
         try {
             var inputstream = this.minioService.getObject(bucketName, objectName);
 
@@ -95,6 +97,31 @@ public class ObjectController {
             return new ResponseEntity<>(
                     new InputStreamResource(inputstream),
                     httpHeaders,
+                    HttpStatus.OK
+            );
+        } catch (IllegalArgumentException e) {
+            throw new BadRequestException(e.getMessage());
+        } catch (ErrorResponseException e) {
+            throw new NotFoundException(e.getMessage());
+        } catch (ServerException | InternalException | XmlParserException | InvalidResponseException |
+                 InvalidKeyException | NoSuchAlgorithmException | InsufficientDataException e) {
+            throw new InternalServerErrorException(e.getMessage());
+        }
+    }
+
+    @GetMapping(value = "/directory/{directoryName}")
+    @Operation(summary = "Get directory contents", responses = {
+            @ApiResponse(responseCode = "200", description = "Directory contents retrieved successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid base64 directory name"),
+            @ApiResponse(responseCode = "404", description = "Could not find bucket or directory with this name"),
+            @ApiResponse(responseCode = "500", description = "Directory contents could not be retrieved due to an unexpected error")
+    })
+    public ResponseEntity<List<ItemResponse>> getDirectory(@PathVariable String bucketName, @PathVariable String directoryName) throws IOException {
+        try {
+            var directoryContents = this.minioService.getDirectoryContents(bucketName, directoryName);
+
+            return new ResponseEntity<>(
+                    directoryContents,
                     HttpStatus.OK
             );
         } catch (IllegalArgumentException e) {
