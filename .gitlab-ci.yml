@@ -11,7 +11,7 @@ variables:
 
 workflow:
   rules:
-    - if: $GITLAB_USER_ID == "1001"
+    - if: $GITLAB_USER_NAME == "git_push_token"
       when: never
     - when: always
 
