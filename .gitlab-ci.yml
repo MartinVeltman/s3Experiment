@@ -1,0 +1,122 @@
+image: docker:20.10.16
+services:
+  - docker:20.10.16-dind
+
+include:
+ - template: Jobs/SAST.gitlab-ci.yml
+
+variables:
+  DOCKER_TLS_CERTDIR: ""
+  BACKEND_DIRECTORY: ObjectStorage
+
+workflow:
+  rules:
+    - if: $GITLAB_USER_ID == "1001"
+      when: never
+    - when: always
+
+stages:
+  - test
+  - build
+  - package
+  - release
+  - deploy
+
+test-spring:
+ stage: test
+ image: maven:latest
+ script:
+   - cd $BACKEND_DIRECTORY
+   - mvn test
+
+build-spring:
+  stage: build
+  image: maven:3.9.2-eclipse-temurin-17-alpine
+  before_script:
+    - apk update
+    - apk add git
+    - git config --global user.name "Gitlab CI"
+    - git config --global user.email "ci@gitlab.com"
+    - git checkout main
+    - git pull --rebase
+  script:
+    - cd $BACKEND_DIRECTORY
+    - export OLD_VERSION=$(mvn -Dexec.executable='echo' -Dexec.args='${project.version}' --non-recursive exec:exec -q)
+    - echo "OLD_VERSION=$(mvn -Dexec.executable='echo' -Dexec.args='${project.version}' --non-recursive exec:exec -q)" >> build.env
+    - chmod +x ./ci/increment-version.sh
+    - ./ci/increment-version.sh
+    - mvn clean package -DskipTests
+    - rm pom.xml.versionsBackup
+    - export NEW_VERSION=$(mvn -Dexec.executable='echo' -Dexec.args='${project.version}' --non-recursive exec:exec -q)
+    - echo "NEW_VERSION=$(mvn -Dexec.executable='echo' -Dexec.args='${project.version}' --non-recursive exec:exec -q)" >> build.env
+    - sed -ri "s|$(echo $OLD_VERSION)|$(echo $NEW_VERSION)|g" helm/values.yaml
+    - git add .
+    - git commit -m "Update version to $NEW_VERSION"
+    - git push "https://gitlab-ci-token:$PROJECT_ACCESS_TOKEN@$CI_SERVER_HOST/$CI_PROJECT_PATH.git"
+    - echo "GIT_SHA=$(git rev-parse HEAD)" >> build.env
+  artifacts:
+    paths:
+      - $BACKEND_DIRECTORY/target/*.jar
+    reports:
+      dotenv: build.env
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: on_success
+    - if: $GITLAB_USER_EMAIL == "ci@gitlab.com"
+      when: never
+
+package-container:
+  stage: package
+  variables:
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:$NEW_VERSION
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $IMAGE_TAG . -f Dockerfile
+    - docker push $IMAGE_TAG
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: on_success
+    - if: $GITLAB_USER_EMAIL == "ci@gitlab.com"
+      when: never
+
+release_job:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never                                  # Do not run this job when a tag is created manually
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: on_success
+    - if: $GITLAB_USER_EMAIL == "ci@gitlab.com"
+      when: never
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH  # Run this job when commits are pushed or merged to the default branch
+  script:
+    - echo "running release_job for $NEW_VERSION"
+  release:                                         # See https://docs.gitlab.com/ee/ci/yaml/#release for available properties
+    tag_name: '$NEW_VERSION'                # The version is incremented per pipeline.
+    description: '$NEW_VERSION'
+    ref: '$GIT_SHA'                         # The tag is created from the pipeline SHA.
+
+deploy-job:
+  stage: deploy
+  environment: production
+  image: alpine:latest
+  before_script:
+    - apk update
+    - apk add git
+    - git config --global user.name "Gitlab CI"
+    - git config --global user.email "ci@gitlab.com"
+    - git clone "https://gitlab-ci-token:$HEMIRON_APPS_ACCESS_TOKEN@$CI_SERVER_HOST/2223.ipsenh-p3/hemiron-apps.git"
+  script:
+    - cd hemiron-apps
+    - sed -ri "s|$(echo $OLD_VERSION)|$(echo $NEW_VERSION)|g" appsets/api-springboot/s3-service.yaml
+    - echo "Deploying application..."
+    - git add .
+    - git commit -m "Update version to $NEW_VERSION"
+    - git push "https://gitlab-ci-token:$HEMIRON_APPS_ACCESS_TOKEN@$CI_SERVER_HOST/2223.ipsenh-p3/hemiron-apps.git"
+    - echo "Application successfully deployed."
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      when: on_success
+    - if: $GITLAB_USER_EMAIL == "ci@gitlab.com"
+      when: never
