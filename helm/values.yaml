@@ -1,0 +1,36 @@
+image: registry.inf-hsleiden.nl/2223.ipsenh-p3/s3
+imageTag: 0.0.14
+imagePullPolicy: "IfNotPresent"
+name: s3-service
+
+profile: prd
+command:
+  - /opt/run.sh
+  - -Dspring.profiles.active=prd
+
+service:
+  enabled: true
+  servicePort: 80
+  type: ClusterIP
+port: 8080
+
+labels:
+  app: s3-service
+  chart: api-springboot
+  release: latest
+
+ingress:
+  enabled: false
+  hosts:
+    - s3-service.k8s.hemiron.com
+  path: /
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    kubernetes.io/tls-acme: "true"
+    ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  tls:
+    - secretName: s3-k8s-hemiron-com
+      hosts:
+        - s3-service.k8s.hemiron.com
