@@ -40,15 +40,16 @@ build-spring:
     - git checkout main
     - git pull --rebase
   script:
-    - cd $BACKEND_DIRECTORY
+    - cd $BACKEND_DIRECTORY # Go to backend directory
     - export OLD_VERSION=$(mvn -Dexec.executable='echo' -Dexec.args='${project.version}' --non-recursive exec:exec -q)
     - echo "OLD_VERSION=$(mvn -Dexec.executable='echo' -Dexec.args='${project.version}' --non-recursive exec:exec -q)" >> build.env
-    - chmod +x ./ci/increment-version.sh
-    - ./ci/increment-version.sh
+    - chmod +x ../ci/increment-version.sh
+    - ../ci/increment-version.sh
     - mvn clean package -DskipTests
     - rm pom.xml.versionsBackup
     - export NEW_VERSION=$(mvn -Dexec.executable='echo' -Dexec.args='${project.version}' --non-recursive exec:exec -q)
     - echo "NEW_VERSION=$(mvn -Dexec.executable='echo' -Dexec.args='${project.version}' --non-recursive exec:exec -q)" >> build.env
+    - cd .. # Go back to root directory
     - sed -ri "s|$(echo $OLD_VERSION)|$(echo $NEW_VERSION)|g" helm/values.yaml
     - git add .
     - git commit -m "Update version to $NEW_VERSION"
