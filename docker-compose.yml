@@ -1,0 +1,22 @@
+version: "3.9"
+services:
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9090"
+    volumes:
+      - "~/minio/data:/data"
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+  postgres:
+    image: postgres:latest
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=objectstorage
+      - POSTGRES_USER=postgresadmin
+      - POSTGRES_PASSWORD=postgresadmin
