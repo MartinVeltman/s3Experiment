@@ -20,7 +20,7 @@ labels:
   release: latest
 
 ingress:
-  enabled: false
+  enabled: true
   hosts:
     - s3-service.k8s.hemiron.com
   path: /
