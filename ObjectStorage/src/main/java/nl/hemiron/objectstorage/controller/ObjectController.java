@@ -1,6 +1,8 @@
 package nl.hemiron.objectstorage.controller;
 
+import io.minio.Result;
 import io.minio.errors.*;
+import io.minio.messages.DeleteError;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -9,6 +11,7 @@ import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
 import nl.hemiron.objectstorage.exceptions.InternalServerErrorException;
 import nl.hemiron.objectstorage.exceptions.NotFoundException;
 import nl.hemiron.objectstorage.model.request.UploadFileToBucketRequest;
+import nl.hemiron.objectstorage.model.response.DeleteFileResponse;
 import nl.hemiron.objectstorage.model.response.ItemResponse;
 import nl.hemiron.objectstorage.model.response.UploadFileToBucketResponse;
 import nl.hemiron.objectstorage.service.ExchangeService;
@@ -105,6 +108,31 @@ public class ObjectController {
             throw new NotFoundException(e.getMessage());
         } catch (ServerException | InternalException | XmlParserException | InvalidResponseException |
                  InvalidKeyException | NoSuchAlgorithmException | InsufficientDataException e) {
+            throw new InternalServerErrorException(e.getMessage());
+        }
+    }
+
+    @DeleteMapping()
+    @Operation(summary = "Remove object(s) from a bucket using base64 encoded names", responses = {
+            @ApiResponse(responseCode = "200", description = "Objects removed successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid base64 object name"),
+            @ApiResponse(responseCode = "404", description = "Could not find bucket with this name"),
+            @ApiResponse(responseCode = "500", description = "Object could not be removed due to an unexpected error")
+    })
+    public ResponseEntity<DeleteFileResponse> deleteObjects(@PathVariable String bucketName, @RequestBody String[] objectNames) {
+        try {
+            Iterable<Result<DeleteError>> deleteResponses = minioService.deleteObjects(bucketName, objectNames);
+            return new ResponseEntity<>(
+                    new DeleteFileResponse(bucketName, deleteResponses),
+                    HttpStatus.OK
+            );
+        } catch (BucketNotFoundException e) {
+            throw new NotFoundException(e.getMessage());
+        } catch (HttpClientErrorException | IllegalArgumentException e) {
+            throw new BadRequestException(e.getMessage());
+        } catch (HttpServerErrorException | ServerException | ErrorResponseException |
+                 InsufficientDataException | IOException | InvalidKeyException |
+                 InvalidResponseException | XmlParserException | InternalException | NoSuchAlgorithmException e) {
             throw new InternalServerErrorException(e.getMessage());
         }
     }

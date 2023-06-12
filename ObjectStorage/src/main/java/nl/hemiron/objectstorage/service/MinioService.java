@@ -5,8 +5,11 @@ import io.minio.*;
 import io.minio.errors.*;
 import io.minio.http.Method;
 import io.minio.messages.Bucket;
+import io.minio.messages.DeleteError;
+import io.minio.messages.DeleteObject;
 import io.minio.messages.Item;
 import jakarta.annotation.PostConstruct;
+import lombok.extern.java.Log;
 import nl.hemiron.objectstorage.dao.BucketDAO;
 import nl.hemiron.objectstorage.exceptions.BucketNotEmptyException;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
@@ -16,13 +19,18 @@ import nl.hemiron.objectstorage.model.response.GetBucketResponse;
 import nl.hemiron.objectstorage.model.response.ItemResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Base64;
 import java.util.List;
+import java.util.stream.Collectors;
 
+@Log
 @Service
 public class MinioService {
 
@@ -110,11 +118,48 @@ public class MinioService {
                 .build());
     }
 
+    public Iterable<Result<DeleteError>> deleteObjects(String bucketName, String[] objectNames) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+        verifyBucketExists(bucketName);
+
+        for (String objectName: objectNames) {
+            if (isDirectory(objectName)) {
+                emptyDirectory(bucketName, objectName);
+            }
+        }
+
+        List<DeleteObject> decodedObjectNames = Arrays.stream(objectNames)
+                .map(Base64.getDecoder()::decode)
+                .map(name -> new DeleteObject(new String(name)))
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        return minioClient.removeObjects(RemoveObjectsArgs.builder()
+                .bucket(bucketName)
+                .objects(decodedObjectNames)
+                .build());
+    }
+
+    public void emptyDirectory(String bucketName, String directoryName) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+        var decodedDirectoryName = StringUtils.decodeBase64(directoryName);
+
+        Iterable<Result<Item>> directoryObjects = minioClient.listObjects(ListObjectsArgs.builder()
+                .bucket(bucketName)
+                .prefix(decodedDirectoryName)
+                .recursive(true)
+                .build());
+
+        for (Result<Item> directoryObject : directoryObjects) {
+            minioClient.removeObject(RemoveObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(directoryObject.get().objectName())
+                    .build());
+        }
+    }
+
     public BucketDb deleteBucket(final String bucketName, final boolean force) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
         verifyBucketExists(bucketName);
         Iterable<Result<Item>> bucketObjects = getObjectsInBucket(bucketName);
         if (force) {
-            for (Result<Item > bucketObject : bucketObjects) {
+            for (Result<Item> bucketObject : bucketObjects) {
                 minioClient.removeObject(RemoveObjectArgs.builder()
                         .bucket(bucketName)
                         .object(bucketObject.get().objectName())
@@ -181,5 +226,9 @@ public class MinioService {
                         .bucket(bucketName)
                         .recursive(true)
                         .build());
+    }
+
+    private boolean isDirectory(String objectName) {
+        return StringUtils.decodeBase64(objectName).endsWith("/");
     }
 }
