@@ -1,15 +1,11 @@
 package nl.hemiron.objectstorage.service;
 
-
-import com.google.common.collect.Iterables;
 import io.minio.GetObjectResponse;
 import io.minio.MinioClient;
 import io.minio.Result;
-import io.minio.StatObjectResponse;
 import io.minio.errors.*;
 import io.minio.messages.Item;
 import io.minio.messages.Tags;
-import nl.hemiron.objectstorage.dao.BucketDAO;
 import nl.hemiron.objectstorage.exceptions.BucketNotEmptyException;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
 import nl.hemiron.objectstorage.exceptions.NotFoundException;
@@ -40,14 +36,11 @@ class MinioServiceTest {
     private MinioService sut;
 
     @Mock
-    private BucketDAO bucketDAO;
-
-    @Mock
     private MinioClient minioClient;
 
     @BeforeEach
     void beforeEach() {
-        sut = new MinioService(bucketDAO);
+        sut = new MinioService();
         sut.minioClient = this.minioClient;
     }
 
