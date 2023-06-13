@@ -5,13 +5,17 @@ import io.minio.*;
 import io.minio.errors.*;
 import io.minio.http.Method;
 import io.minio.messages.Bucket;
+import io.minio.messages.DeleteError;
+import io.minio.messages.DeleteObject;
 import io.minio.messages.Item;
 import jakarta.annotation.PostConstruct;
-import nl.hemiron.objectstorage.dao.BucketDAO;
+import lombok.extern.java.Log;
 import nl.hemiron.objectstorage.exceptions.BucketNotEmptyException;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
+import nl.hemiron.objectstorage.exceptions.InvalidProjectIdException;
 import nl.hemiron.objectstorage.exceptions.NotFoundException;
-import nl.hemiron.objectstorage.model.BucketDb;
+import nl.hemiron.objectstorage.model.response.CreateBucketResponse;
+import nl.hemiron.objectstorage.model.response.DeleteBucketResponse;
 import nl.hemiron.objectstorage.model.response.GetBucketResponse;
 import nl.hemiron.objectstorage.model.response.ItemResponse;
 import org.springframework.beans.factory.annotation.Value;
@@ -21,8 +25,14 @@ import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.UUID;
+import java.util.Arrays;
+import java.util.Base64;
+import java.util.stream.Collectors;
 
+@Log
 @Service
 public class MinioService {
 
@@ -37,10 +47,7 @@ public class MinioService {
 
     MinioClient minioClient;
 
-    private final BucketDAO bucketDAO;
-
-    public MinioService(BucketDAO bucketDAO) {
-        this.bucketDAO = bucketDAO;
+    public MinioService() {
     }
 
     @PostConstruct
@@ -51,30 +58,44 @@ public class MinioService {
                 .build();
     }
 
-    public BucketDb createBucket(String bucketName) throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
+    public CreateBucketResponse createBucket(String bucketName, UUID projectId) throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
         minioClient.makeBucket(
                 MakeBucketArgs.builder()
                 .bucket(bucketName).build()
         );
 
-        return bucketDAO.save(
-                new BucketDb(bucketName)
-        );
+        var tags = new HashMap<String, String>();
+        tags.put("projectId", projectId.toString());
+
+        minioClient.setBucketTags(
+                SetBucketTagsArgs.builder()
+                        .bucket(bucketName)
+                        .tags(tags)
+                        .build());
+
+        return new CreateBucketResponse(bucketName);
     }
 
-    public List<GetBucketResponse> getBuckets() throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+    public List<GetBucketResponse> getBuckets(UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
         var buckets = minioClient.listBuckets();
 
         List<GetBucketResponse> responses = new ArrayList<>();
         for (Bucket bucket : buckets) {
-            responses.add(getBucketByName(bucket.name()));
+            try {
+                verifyBucketBelongsToProject(bucket.name(), projectId);
+                responses.add(getBucketByName(bucket.name(), projectId));
+            } catch (InvalidProjectIdException ignored) {
+                // Don't add the bucket to the responses if the given ProjectId doesn't match
+            }
         }
 
         return responses;
     }
 
-    public GetBucketResponse getBucketByName(final String bucketName) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException, BucketNotFoundException {
+    public GetBucketResponse getBucketByName(final String bucketName, final UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException, BucketNotFoundException {
         verifyBucketExists(bucketName);
+        verifyBucketBelongsToProject(bucketName, projectId);
+
         Iterable<Result<Item>> bucketObjects = getObjectsInBucket(bucketName);
 
         long totalSize = 0L;
@@ -87,8 +108,9 @@ public class MinioService {
         return new GetBucketResponse(bucketName, totalSize, amountOfObjects);
     }
 
-    public String getUploadObjectURL(String bucketName, String objectName) throws BucketNotFoundException, ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+    public String getUploadObjectURL(String bucketName, String objectName, UUID projectId) throws BucketNotFoundException, ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
         verifyBucketExists(bucketName);
+        verifyBucketBelongsToProject(bucketName, projectId);
 
         return minioClient.getPresignedObjectUrl(
                 GetPresignedObjectUrlArgs.builder()
@@ -100,8 +122,9 @@ public class MinioService {
         );
     }
 
-    public GetObjectResponse getObject(String bucketName, String objectName) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+    public GetObjectResponse getObject(String bucketName, String objectName, UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
         verifyBucketExists(bucketName);
+        verifyBucketBelongsToProject(bucketName, projectId);
 
         var decodedName = StringUtils.decodeBase64(objectName);
         return minioClient.getObject(GetObjectArgs.builder()
@@ -110,11 +133,33 @@ public class MinioService {
                 .build());
     }
 
-    public BucketDb deleteBucket(final String bucketName, final boolean force) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+    public Iterable<Result<DeleteError>> deleteObjects(String bucketName, String[] objectNames, UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
         verifyBucketExists(bucketName);
+        verifyBucketBelongsToProject(bucketName, projectId);
+
+        for (String objectName: objectNames) {
+            if (isDirectory(objectName)) {
+                emptyDirectory(bucketName, objectName);
+            }
+        }
+
+        List<DeleteObject> decodedObjectNames = Arrays.stream(objectNames)
+                .map(Base64.getDecoder()::decode)
+                .map(name -> new DeleteObject(new String(name)))
+                .collect(Collectors.toCollection(ArrayList::new));
+
+        return minioClient.removeObjects(RemoveObjectsArgs.builder()
+                .bucket(bucketName)
+                .objects(decodedObjectNames)
+                .build());
+    }
+
+    public DeleteBucketResponse deleteBucket(final String bucketName, final boolean force, final UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {        verifyBucketExists(bucketName);
+        verifyBucketBelongsToProject(bucketName, projectId);
+
         Iterable<Result<Item>> bucketObjects = getObjectsInBucket(bucketName);
         if (force) {
-            for (Result<Item > bucketObject : bucketObjects) {
+            for (Result<Item> bucketObject : bucketObjects) {
                 minioClient.removeObject(RemoveObjectArgs.builder()
                         .bucket(bucketName)
                         .object(bucketObject.get().objectName())
@@ -126,16 +171,13 @@ public class MinioService {
         minioClient.removeBucket(RemoveBucketArgs.builder()
                 .bucket(bucketName)
                 .build());
-        try {
-            BucketDb bucket = bucketDAO.getByBucketName(bucketName);
-            bucketDAO.remove(bucket);
-            return bucket;
-        } catch (Exception ignored) {}
-        return new BucketDb(bucketName);
+
+        return new DeleteBucketResponse(bucketName);
     }
 
-    public List<ItemResponse> getDirectoryContents(String bucketName, String directoryName) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+    public List<ItemResponse> getDirectoryContents(String bucketName, String directoryName, UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
         verifyBucketExists(bucketName);
+        verifyBucketBelongsToProject(bucketName, projectId);
 
         var decodedName = StringUtils.decodeBase64(directoryName);
         var directoryContents = minioClient.listObjects(ListObjectsArgs.builder()
@@ -181,5 +223,44 @@ public class MinioService {
                         .bucket(bucketName)
                         .recursive(true)
                         .build());
+    }
+
+    private void verifyBucketBelongsToProject(String bucketName, UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+        var tags = minioClient.getBucketTags(
+                GetBucketTagsArgs.builder().bucket(bucketName).build()
+        );
+        var bucketTagProjectIdString = tags.get().get("projectId");
+
+        try {
+            UUID bucketTagProjectId = UUID.fromString(bucketTagProjectIdString);
+            if (!projectId.equals(bucketTagProjectId)) {
+                throw new InvalidProjectIdException(
+                        "Invalid Project Id for bucket with name " + bucketName);
+            }
+        } catch (NullPointerException ignored) {
+            throw new InvalidProjectIdException(
+                    "Could not parse Project Id to UUID for bucket with name " + bucketName);
+        }
+    }
+
+    private void emptyDirectory(String bucketName, String directoryName) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+        var decodedDirectoryName = StringUtils.decodeBase64(directoryName);
+
+        Iterable<Result<Item>> directoryObjects = minioClient.listObjects(ListObjectsArgs.builder()
+                .bucket(bucketName)
+                .prefix(decodedDirectoryName)
+                .recursive(true)
+                .build());
+
+        for (Result<Item> directoryObject : directoryObjects) {
+            minioClient.removeObject(RemoveObjectArgs.builder()
+                    .bucket(bucketName)
+                    .object(directoryObject.get().objectName())
+                    .build());
+        }
+    }
+
+    private boolean isDirectory(String objectName) {
+        return StringUtils.decodeBase64(objectName).endsWith("/");
     }
 }

@@ -11,12 +11,9 @@ services:
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
-  postgres:
-    image: postgres:latest
-    restart: always
+  rabbitmq:
+    image: registry.inf-hsleiden.nl/2223.ipsenh-p3/messaging/base_rabbit
     ports:
-      - "5432:5432"
-    environment:
-      - POSTGRES_DB=objectstorage
-      - POSTGRES_USER=postgresadmin
-      - POSTGRES_PASSWORD=postgresadmin
+      - "5672:5672"
+      - "15672:15672"
+      
