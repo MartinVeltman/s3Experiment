@@ -10,12 +10,12 @@ import io.minio.messages.DeleteObject;
 import io.minio.messages.Item;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.java.Log;
-import nl.hemiron.objectstorage.dao.BucketDAO;
 import nl.hemiron.objectstorage.exceptions.BucketNotEmptyException;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
 import nl.hemiron.objectstorage.exceptions.InvalidProjectIdException;
 import nl.hemiron.objectstorage.exceptions.NotFoundException;
-import nl.hemiron.objectstorage.model.BucketDb;
+import nl.hemiron.objectstorage.model.response.CreateBucketResponse;
+import nl.hemiron.objectstorage.model.response.DeleteBucketResponse;
 import nl.hemiron.objectstorage.model.response.GetBucketResponse;
 import nl.hemiron.objectstorage.model.response.ItemResponse;
 import org.springframework.beans.factory.annotation.Value;
@@ -47,10 +47,7 @@ public class MinioService {
 
     MinioClient minioClient;
 
-    private final BucketDAO bucketDAO;
-
-    public MinioService(BucketDAO bucketDAO) {
-        this.bucketDAO = bucketDAO;
+    public MinioService() {
     }
 
     @PostConstruct
@@ -61,7 +58,7 @@ public class MinioService {
                 .build();
     }
 
-    public BucketDb createBucket(String bucketName, UUID projectId) throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
+    public CreateBucketResponse createBucket(String bucketName, UUID projectId) throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException, IllegalArgumentException {
         minioClient.makeBucket(
                 MakeBucketArgs.builder()
                 .bucket(bucketName).build()
@@ -76,9 +73,7 @@ public class MinioService {
                         .tags(tags)
                         .build());
 
-        return bucketDAO.save(
-                new BucketDb(bucketName)
-        );
+        return new CreateBucketResponse(bucketName);
     }
 
     public List<GetBucketResponse> getBuckets(UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
@@ -159,7 +154,7 @@ public class MinioService {
                 .build());
     }
 
-    public BucketDb deleteBucket(final String bucketName, final boolean force, final UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {        verifyBucketExists(bucketName);
+    public DeleteBucketResponse deleteBucket(final String bucketName, final boolean force, final UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {        verifyBucketExists(bucketName);
         verifyBucketBelongsToProject(bucketName, projectId);
 
         Iterable<Result<Item>> bucketObjects = getObjectsInBucket(bucketName);
@@ -176,12 +171,8 @@ public class MinioService {
         minioClient.removeBucket(RemoveBucketArgs.builder()
                 .bucket(bucketName)
                 .build());
-        try {
-            BucketDb bucket = bucketDAO.getByBucketName(bucketName);
-            bucketDAO.remove(bucket);
-            return bucket;
-        } catch (Exception ignored) {}
-        return new BucketDb(bucketName);
+
+        return new DeleteBucketResponse(bucketName);
     }
 
     public List<ItemResponse> getDirectoryContents(String bucketName, String directoryName, UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
@@ -239,10 +230,16 @@ public class MinioService {
                 GetBucketTagsArgs.builder().bucket(bucketName).build()
         );
         var bucketTagProjectIdString = tags.get().get("projectId");
-        UUID bucketTagProjectId = UUID.fromString(bucketTagProjectIdString);
-        if (!projectId.equals(bucketTagProjectId)) {
+
+        try {
+            UUID bucketTagProjectId = UUID.fromString(bucketTagProjectIdString);
+            if (!projectId.equals(bucketTagProjectId)) {
+                throw new InvalidProjectIdException(
+                        "Invalid Project Id for bucket with name " + bucketName);
+            }
+        } catch (NullPointerException ignored) {
             throw new InvalidProjectIdException(
-                    "Invalid Project Id for bucket with name " + bucketName);
+                    "Could not parse Project Id to UUID for bucket with name " + bucketName);
         }
     }
 

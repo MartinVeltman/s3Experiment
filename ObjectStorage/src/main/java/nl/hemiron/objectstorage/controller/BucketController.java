@@ -5,7 +5,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import nl.hemiron.objectstorage.exceptions.*;
-import nl.hemiron.objectstorage.model.BucketDb;
 import nl.hemiron.objectstorage.model.request.CreateBucketRequest;
 import nl.hemiron.objectstorage.model.response.CreateBucketResponse;
 import nl.hemiron.objectstorage.model.response.DeleteBucketResponse;
@@ -46,15 +45,13 @@ public class BucketController {
             @RequestHeader("Project-Id") UUID projectId,
             @RequestBody CreateBucketRequest createBucketRequest) {
         try {
-            BucketDb bucket = minioService.createBucket(
+            CreateBucketResponse createBucketResponse = minioService.createBucket(
                     createBucketRequest.getName(),
                     projectId
             );
 
             return new ResponseEntity<>(
-                    new CreateBucketResponse(
-                            bucket.getName()
-                    ).add(linkTo(methodOn(BucketController.class).getBucket(projectId, bucket.getName())).withSelfRel()),
+                    createBucketResponse.add(linkTo(methodOn(BucketController.class).getBucket(projectId, createBucketResponse.getName())).withSelfRel()),
                     HttpStatus.CREATED
             );
         } catch (IllegalArgumentException e) {
@@ -126,11 +123,10 @@ public class BucketController {
             @RequestHeader(value = "force-delete", defaultValue = "false" ) boolean forceDelete,
             @PathVariable final String bucketName) {
         try {
-            var bucket = this.minioService.deleteBucket(bucketName, forceDelete, projectId);
+            DeleteBucketResponse deleteBucketResponse = this.minioService.deleteBucket(bucketName, forceDelete, projectId);
+
             return new ResponseEntity<>(
-                    new DeleteBucketResponse(
-                            bucket.getName()
-                    ),
+                    deleteBucketResponse,
                     HttpStatus.OK
             );
         } catch (BucketNotFoundException e) {
