@@ -1,6 +1,8 @@
 package nl.hemiron.objectstorage.controller;
 
+import io.minio.Result;
 import io.minio.errors.*;
+import io.minio.messages.DeleteError;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -9,6 +11,7 @@ import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
 import nl.hemiron.objectstorage.exceptions.InternalServerErrorException;
 import nl.hemiron.objectstorage.exceptions.NotFoundException;
 import nl.hemiron.objectstorage.model.request.UploadFileToBucketRequest;
+import nl.hemiron.objectstorage.model.response.DeleteFileResponse;
 import nl.hemiron.objectstorage.model.response.ItemResponse;
 import nl.hemiron.objectstorage.model.response.UploadFileToBucketResponse;
 import nl.hemiron.objectstorage.service.ExchangeService;
@@ -24,6 +27,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.util.UUID;
 import java.util.List;
 
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
@@ -50,7 +54,10 @@ public class ObjectController {
             @ApiResponse(responseCode = "404", description = "Bucket with specified name does not exist"),
             @ApiResponse(responseCode = "500", description = "Multipart file could not be uploaded due to an unexpected error")
     })
-    public ResponseEntity<UploadFileToBucketResponse> uploadFileToBucket(@PathVariable String bucketName, @ModelAttribute UploadFileToBucketRequest uploadFileToBucketRequest) {
+    public ResponseEntity<UploadFileToBucketResponse> uploadFileToBucket(
+            @RequestHeader("Project-Id") UUID projectId,
+            @PathVariable String bucketName,
+            @ModelAttribute UploadFileToBucketRequest uploadFileToBucketRequest) {
         try {
             MultipartFile multipartFile = uploadFileToBucketRequest.getObject();
 
@@ -58,14 +65,15 @@ public class ObjectController {
 
             String uploadObjectURL = minioService.getUploadObjectURL(
                     bucketName,
-                    objectName
+                    objectName,
+                    projectId
             );
 
             exchangeService.put(multipartFile, uploadObjectURL);
 
             return new ResponseEntity<>(
                     new UploadFileToBucketResponse()
-                            .add(linkTo(methodOn(ObjectController.class).downloadObject(bucketName, StringUtils.encodeBase64(objectName))).withSelfRel()),
+                            .add(linkTo(methodOn(ObjectController.class).downloadObject(projectId, bucketName, StringUtils.encodeBase64(objectName))).withSelfRel()),
                     HttpStatus.OK
             );
         } catch (BucketNotFoundException e) {
@@ -86,9 +94,12 @@ public class ObjectController {
             @ApiResponse(responseCode = "404", description = "Could not find bucket and/or object with this name"),
             @ApiResponse(responseCode = "500", description = "Object could not be retrieved due to an unexpected error")
     })
-    public ResponseEntity<InputStreamResource> downloadObject(@PathVariable String bucketName, @PathVariable String objectName) throws IOException {
+    public ResponseEntity<InputStreamResource> downloadObject(
+            @RequestHeader("Project-Id") UUID projectId,
+            @PathVariable String bucketName,
+            @PathVariable String objectName) throws IOException {
         try {
-            var inputstream = this.minioService.getObject(bucketName, objectName);
+            var inputstream = this.minioService.getObject(bucketName, objectName, projectId);
 
             var filename = StringUtils.getFilenameFromBase64(objectName);
             HttpHeaders httpHeaders = new HttpHeaders();
@@ -109,6 +120,34 @@ public class ObjectController {
         }
     }
 
+    @DeleteMapping()
+    @Operation(summary = "Remove object(s) from a bucket using base64 encoded names", responses = {
+            @ApiResponse(responseCode = "200", description = "Objects removed successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid base64 object name"),
+            @ApiResponse(responseCode = "404", description = "Could not find bucket with this name"),
+            @ApiResponse(responseCode = "500", description = "Object could not be removed due to an unexpected error")
+    })
+    public ResponseEntity<DeleteFileResponse> deleteObjects(
+            @RequestHeader("Project-Id") UUID projectId,
+            @PathVariable String bucketName,
+            @RequestBody String[] objectNames) {
+        try {
+            Iterable<Result<DeleteError>> deleteResponses = minioService.deleteObjects(bucketName, objectNames, projectId);
+            return new ResponseEntity<>(
+                    new DeleteFileResponse(bucketName, deleteResponses),
+                    HttpStatus.OK
+            );
+        } catch (BucketNotFoundException e) {
+            throw new NotFoundException(e.getMessage());
+        } catch (HttpClientErrorException | IllegalArgumentException e) {
+            throw new BadRequestException(e.getMessage());
+        } catch (HttpServerErrorException | ServerException | ErrorResponseException |
+                 InsufficientDataException | IOException | InvalidKeyException |
+                 InvalidResponseException | XmlParserException | InternalException | NoSuchAlgorithmException e) {
+            throw new InternalServerErrorException(e.getMessage());
+        }
+    }
+
     @GetMapping(value = "/directory/{directoryName}")
     @Operation(summary = "Get directory contents", responses = {
             @ApiResponse(responseCode = "200", description = "Directory contents retrieved successfully"),
@@ -116,9 +155,12 @@ public class ObjectController {
             @ApiResponse(responseCode = "404", description = "Could not find bucket or directory with this name"),
             @ApiResponse(responseCode = "500", description = "Directory contents could not be retrieved due to an unexpected error")
     })
-    public ResponseEntity<List<ItemResponse>> getDirectory(@PathVariable String bucketName, @PathVariable String directoryName) throws IOException {
+    public ResponseEntity<List<ItemResponse>> getDirectory(
+            @RequestHeader("Project-Id") UUID projectId,
+            @PathVariable String bucketName,
+            @PathVariable String directoryName) throws IOException {
         try {
-            var directoryContents = this.minioService.getDirectoryContents(bucketName, directoryName);
+            var directoryContents = this.minioService.getDirectoryContents(bucketName, directoryName, projectId);
 
             return new ResponseEntity<>(
                     directoryContents,

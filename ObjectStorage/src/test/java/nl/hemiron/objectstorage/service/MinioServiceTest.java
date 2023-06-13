@@ -1,13 +1,11 @@
 package nl.hemiron.objectstorage.service;
 
-
-import com.google.common.collect.Iterables;
 import io.minio.GetObjectResponse;
 import io.minio.MinioClient;
 import io.minio.Result;
 import io.minio.errors.*;
 import io.minio.messages.Item;
-import nl.hemiron.objectstorage.dao.BucketDAO;
+import io.minio.messages.Tags;
 import nl.hemiron.objectstorage.exceptions.BucketNotEmptyException;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
 import nl.hemiron.objectstorage.exceptions.NotFoundException;
@@ -23,6 +21,8 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -36,14 +36,11 @@ class MinioServiceTest {
     private MinioService sut;
 
     @Mock
-    private BucketDAO bucketDAO;
-
-    @Mock
     private MinioClient minioClient;
 
     @BeforeEach
     void beforeEach() {
-        sut = new MinioService(bucketDAO);
+        sut = new MinioService();
         sut.minioClient = this.minioClient;
     }
 
@@ -55,7 +52,7 @@ class MinioServiceTest {
         when(this.minioClient.bucketExists(any())).thenReturn(false);
 
         // Act
-        var exception = assertThrows(BucketNotFoundException.class, () -> sut.getBucketByName(name));
+        var exception = assertThrows(BucketNotFoundException.class, () -> sut.getBucketByName(name, null));
 
         // Assert
         var actual = exception.getMessage();
@@ -67,11 +64,14 @@ class MinioServiceTest {
             throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException {
         // Arrange
         var bucketObjects = new ArrayList<Result<Item>>();
+        var projectId = UUID.fromString("7e403ff3-6ddf-4591-a8e6-2b97dbc10636");
+        var tags = Tags.newBucketTags(new HashMap<>(){{put("projectId", "7e403ff3-6ddf-4591-a8e6-2b97dbc10636");}});
         when(this.minioClient.bucketExists(any())).thenReturn(true);
+        when(this.minioClient.getBucketTags(any())).thenReturn(tags);
         when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
 
         // Act
-        var actual = sut.getBucketByName("lcab-bucket");
+        var actual = sut.getBucketByName("lcab-bucket", projectId);
 
         // Assert
         assertThat(actual.size, is(0L));
@@ -109,11 +109,14 @@ class MinioServiceTest {
         bucketObjects.add(object);
         bucketObjects.add(objectInSubdirectory);
 
+        var projectId = UUID.fromString("7e403ff3-6ddf-4591-a8e6-2b97dbc10636");
+        var tags = Tags.newBucketTags(new HashMap<>(){{put("projectId", "7e403ff3-6ddf-4591-a8e6-2b97dbc10636");}});
         when(this.minioClient.bucketExists(any())).thenReturn(true);
+        when(this.minioClient.getBucketTags(any())).thenReturn(tags);
         when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
 
         // Act
-        var actual = sut.getBucketByName("hemiron-bucket");
+        var actual = sut.getBucketByName("hemiron-bucket", projectId);
 
         // Assert
         assertThat(actual.size, is(58_139L));
@@ -124,16 +127,19 @@ class MinioServiceTest {
     void deleteBucket_WithObjectsInBucketAndNoForceDelete_ThrowsBucketNotEmptyException() throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
         //Arrange
         var name = "mybucket";
+        var projectId = UUID.fromString("d51a6212-61fc-4bd6-9abe-4165d4db0ed6");
+        var tags = Tags.newBucketTags(new HashMap<>(){{put("projectId", "d51a6212-61fc-4bd6-9abe-4165d4db0ed6");}});
         var bucketObjects = new ArrayList<Result<Item>>();
         bucketObjects.add(new Result<Item>(new Item() {}));
 
         boolean forceDelete = false;
 
         when(this.minioClient.bucketExists(any())).thenReturn(true);
+        when(this.minioClient.getBucketTags(any())).thenReturn(tags);
         when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
 
         //Act
-        var exception = assertThrows(BucketNotEmptyException.class, () -> sut.deleteBucket(name, forceDelete));
+        var exception = assertThrows(BucketNotEmptyException.class, () -> sut.deleteBucket(name, forceDelete, projectId));
 
         //Assert
         var actual = exception.getMessage();
@@ -144,15 +150,20 @@ class MinioServiceTest {
     void getObject_WithBucketNameAndEncodedObjectName_ReturnsObject()
             throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException {
         // Arrange
+        var projectId = UUID.fromString("7e403ff3-6ddf-4591-a8e6-2b97dbc10636");
+        var tags = Tags.newBucketTags(new HashMap<>(){{put("projectId", "7e403ff3-6ddf-4591-a8e6-2b97dbc10636");}});
         var headers = new Headers.Builder().build();
         var response = new GetObjectResponse(
                 headers, "s1057392-bucket", "eu-west-3",
                 "healthForYou/rightToAccess/a18d2f3b-7809-4efb-865c-113a1105fa98.pdf", null);
         when(this.minioClient.getObject(any())).thenReturn(response);
+        when(this.minioClient.getBucketTags(any())).thenReturn(tags);
         when(this.minioClient.bucketExists(any())).thenReturn(true);
 
         // Act
-        var actual = sut.getObject("s1057392-bucket", "aGVhbHRoRm9yWW91L3JpZ2h0VG9BY2Nlc3NzL2ExOGQyZjNiLTc4MDktNGVmYi04NjVjLTExM2ExMTA1ZmE5OC5wZGY=");
+        var actual = sut.getObject("s1057392-bucket",
+                "aGVhbHRoRm9yWW91L3JpZ2h0VG9BY2Nlc3NzL2ExOGQyZjNiLTc4MDktNGVmYi04NjVjLTExM2ExMTA1ZmE5OC5wZGY=",
+                projectId);
         var actualBucket = actual.bucket();
         var actualObject = actual.object();
 
@@ -166,13 +177,18 @@ class MinioServiceTest {
             throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException {
         //Arrange
         var bucketObjects = new ArrayList<Result<Item>>();
-
+        var projectId = UUID.fromString("60964af5-9f15-42ec-a958-d32c5c217ea0");
+        var tags = Tags.newBucketTags(new HashMap<>(){{put("projectId", "60964af5-9f15-42ec-a958-d32c5c217ea0");}});
         when(this.minioClient.bucketExists(any())).thenReturn(true);
+        when(this.minioClient.getBucketTags(any())).thenReturn(tags);
         when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
 
         //Act
         var exception = assertThrows(NotFoundException.class,
-                () -> sut.getDirectoryContents("mybucket", "dGhpc0RpcmVjdG9yeURvZXNOb3RFeGlzdC8="));
+                () -> sut.getDirectoryContents(
+                        "mybucket",
+                        "dGhpc0RpcmVjdG9yeURvZXNOb3RFeGlzdC8=",
+                        projectId));
 
         //Assert
         var actual = exception.getMessage();
@@ -209,11 +225,15 @@ class MinioServiceTest {
         bucketObjects.add(object);
         bucketObjects.add(subdirectory);
 
+        var projectId = UUID.fromString("60964af5-9f15-42ec-a958-d32c5c217ea0");
+        var tags = Tags.newBucketTags(new HashMap<>(){{put("projectId", "60964af5-9f15-42ec-a958-d32c5c217ea0");}});
+
         when(this.minioClient.bucketExists(any())).thenReturn(true);
+        when(this.minioClient.getBucketTags(any())).thenReturn(tags);
         when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
 
         //Act
-        var actual = sut.getDirectoryContents("mybucket", "Lw==");
+        var actual = sut.getDirectoryContents("mybucket", "Lw==", projectId);
 
         //Assert
         assertThat(actual.size(), is(2));

@@ -5,7 +5,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import nl.hemiron.objectstorage.exceptions.*;
-import nl.hemiron.objectstorage.model.BucketDb;
 import nl.hemiron.objectstorage.model.request.CreateBucketRequest;
 import nl.hemiron.objectstorage.model.response.CreateBucketResponse;
 import nl.hemiron.objectstorage.model.response.DeleteBucketResponse;
@@ -19,6 +18,7 @@ import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.List;
+import java.util.UUID;
 
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
@@ -41,16 +41,17 @@ public class BucketController {
             @ApiResponse(responseCode = "409", description = "Bucket name already in use"),
             @ApiResponse(responseCode = "500", description = "Bucket could not be created due to an unexpected error")
     })
-    public ResponseEntity<CreateBucketResponse> createBucket(@RequestBody CreateBucketRequest createBucketRequest) {
+    public ResponseEntity<CreateBucketResponse> createBucket(
+            @RequestHeader("Project-Id") UUID projectId,
+            @RequestBody CreateBucketRequest createBucketRequest) {
         try {
-            BucketDb bucket = minioService.createBucket(
-                    createBucketRequest.getName()
+            CreateBucketResponse createBucketResponse = minioService.createBucket(
+                    createBucketRequest.getName(),
+                    projectId
             );
 
             return new ResponseEntity<>(
-                    new CreateBucketResponse(
-                            bucket.getName()
-                    ).add(linkTo(methodOn(BucketController.class).getBucket(bucket.getName())).withSelfRel()),
+                    createBucketResponse.add(linkTo(methodOn(BucketController.class).getBucket(projectId, createBucketResponse.getName())).withSelfRel()),
                     HttpStatus.CREATED
             );
         } catch (IllegalArgumentException e) {
@@ -67,12 +68,12 @@ public class BucketController {
             @ApiResponse(responseCode = "200", description = "Bucket information retrieved successfully"),
             @ApiResponse(responseCode = "500", description = "Buckets could not be retrieved due to an unexpected error")
     })
-    public ResponseEntity<List<GetBucketResponse>> getBuckets() {
+    public ResponseEntity<List<GetBucketResponse>> getBuckets(@RequestHeader("Project-Id") UUID projectId) {
         try {
-            var response = this.minioService.getBuckets();
+            var response = this.minioService.getBuckets(projectId);
 
             for (GetBucketResponse getBucketResponse : response) {
-                getBucketResponse.add(linkTo(methodOn(BucketController.class).getBucket(getBucketResponse.name)).withSelfRel());
+                getBucketResponse.add(linkTo(methodOn(BucketController.class).getBucket(projectId, getBucketResponse.name)).withSelfRel());
             }
 
             return new ResponseEntity<>(
@@ -92,9 +93,11 @@ public class BucketController {
             @ApiResponse(responseCode = "404", description = "Bucket with specified name does not exist"),
             @ApiResponse(responseCode = "500", description = "Bucket could not be retrieved due to an unexpected error")
     })
-    public ResponseEntity<GetBucketResponse> getBucket(@PathVariable final String bucketName) {
+    public ResponseEntity<GetBucketResponse> getBucket(
+            @RequestHeader("Project-Id") UUID projectId,
+            @PathVariable final String bucketName) {
         try {
-            var response = this.minioService.getBucketByName(bucketName);
+            var response = this.minioService.getBucketByName(bucketName, projectId);
             return new ResponseEntity<>(
                     response,
                     HttpStatus.OK
@@ -116,14 +119,14 @@ public class BucketController {
             @ApiResponse(responseCode = "500", description = "Bucket could not be deleted due to an unexpected error")
     })
     public ResponseEntity<DeleteBucketResponse> deleteBucket(
-            @PathVariable final String bucketName,
-            @RequestHeader(value = "force-delete", defaultValue = "false" ) boolean forceDelete) {
+            @RequestHeader("Project-Id") UUID projectId,
+            @RequestHeader(value = "force-delete", defaultValue = "false" ) boolean forceDelete,
+            @PathVariable final String bucketName) {
         try {
-            var bucket = this.minioService.deleteBucket(bucketName, forceDelete);
+            DeleteBucketResponse deleteBucketResponse = this.minioService.deleteBucket(bucketName, forceDelete, projectId);
+
             return new ResponseEntity<>(
-                    new DeleteBucketResponse(
-                            bucket.getName()
-                    ),
+                    deleteBucketResponse,
                     HttpStatus.OK
             );
         } catch (BucketNotFoundException e) {
