@@ -125,7 +125,7 @@ class MinioServiceTest {
 
     @Test
     void deleteBucket_WithObjectsInBucketAndNoForceDelete_ThrowsBucketNotEmptyException() throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
-        //Arrange
+        // Arrange
         var name = "mybucket";
         var projectId = UUID.fromString("d51a6212-61fc-4bd6-9abe-4165d4db0ed6");
         var tags = Tags.newBucketTags(new HashMap<>(){{put("projectId", "d51a6212-61fc-4bd6-9abe-4165d4db0ed6");}});
@@ -138,10 +138,10 @@ class MinioServiceTest {
         when(this.minioClient.getBucketTags(any())).thenReturn(tags);
         when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
 
-        //Act
+        // Act
         var exception = assertThrows(BucketNotEmptyException.class, () -> sut.deleteBucket(name, forceDelete, projectId));
 
-        //Assert
+        // Assert
         var actual = exception.getMessage();
         assertThat(actual, is("Bucket not empty, consider emptying it or adding 'force-delete' header to your request"));
     }
@@ -175,7 +175,7 @@ class MinioServiceTest {
     @Test
     void getDirectoryContents_WithDirectoryThatDoesNotExist_ThrowsNotFoundException()
             throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException {
-        //Arrange
+        // Arrange
         var bucketObjects = new ArrayList<Result<Item>>();
         var projectId = UUID.fromString("60964af5-9f15-42ec-a958-d32c5c217ea0");
         var tags = Tags.newBucketTags(new HashMap<>(){{put("projectId", "60964af5-9f15-42ec-a958-d32c5c217ea0");}});
@@ -183,22 +183,20 @@ class MinioServiceTest {
         when(this.minioClient.getBucketTags(any())).thenReturn(tags);
         when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
 
-        //Act
-        var exception = assertThrows(NotFoundException.class,
-                () -> sut.getDirectoryContents(
+        // Act
+        var actual = sut.getDirectoryContents(
                         "mybucket",
                         "dGhpc0RpcmVjdG9yeURvZXNOb3RFeGlzdC8=",
-                        projectId));
+                        projectId);
 
-        //Assert
-        var actual = exception.getMessage();
-        assertThat(actual, is("Directory with name thisDirectoryDoesNotExist/ not found"));
+        // Assert
+        assertThat(actual.size(), is(0));
     }
 
     @Test
     void getDirectoryContents_WithDirectoryContainingFileAndSubdirectory_ReturnsBothAsItemResponse()
             throws MinioException, IOException, NoSuchAlgorithmException, InvalidKeyException {
-        //Arrange
+        // Arrange
         var bucketObjects = new ArrayList<Result<Item>>();
         var object = new Result<Item>(new Item() {
             @Override
@@ -232,10 +230,10 @@ class MinioServiceTest {
         when(this.minioClient.getBucketTags(any())).thenReturn(tags);
         when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
 
-        //Act
+        // Act
         var actual = sut.getDirectoryContents("mybucket", "Lw==", projectId);
 
-        //Assert
+        // Assert
         assertThat(actual.size(), is(2));
         var first = actual.get(0);
         assertThat(first.getObjectName(), is("eeyore.png"));

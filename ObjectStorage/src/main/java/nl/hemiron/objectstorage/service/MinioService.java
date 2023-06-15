@@ -13,7 +13,6 @@ import lombok.extern.java.Log;
 import nl.hemiron.objectstorage.exceptions.BucketNotEmptyException;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
 import nl.hemiron.objectstorage.exceptions.InvalidProjectIdException;
-import nl.hemiron.objectstorage.exceptions.NotFoundException;
 import nl.hemiron.objectstorage.model.response.CreateBucketResponse;
 import nl.hemiron.objectstorage.model.response.DeleteBucketResponse;
 import nl.hemiron.objectstorage.model.response.GetBucketResponse;
@@ -24,12 +23,7 @@ import org.springframework.stereotype.Service;
 import java.io.IOException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.UUID;
-import java.util.Arrays;
-import java.util.Base64;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Log
@@ -187,7 +181,7 @@ public class MinioService {
                 .build());
 
         if (Iterables.size(directoryContents) == 0) {
-            throw new NotFoundException("Directory with name " + decodedName + " not found");
+            return Collections.emptyList();
         }
 
         List<ItemResponse> items = new ArrayList<>();
