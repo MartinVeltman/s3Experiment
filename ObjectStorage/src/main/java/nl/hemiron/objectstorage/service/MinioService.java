@@ -182,10 +182,7 @@ public class MinioService {
                 .build());
 
         if (Iterables.size(directoryContents) == 0) {
-            if (decodedName.equals("/")) {
-                return Collections.emptyList();
-            }
-            throw new NotFoundException("Directory with name " + decodedName + " not found");
+            return Collections.emptyList();
         }
 
         List<ItemResponse> items = new ArrayList<>();
