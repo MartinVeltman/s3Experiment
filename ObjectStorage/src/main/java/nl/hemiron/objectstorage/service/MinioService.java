@@ -184,20 +184,18 @@ public class MinioService {
 
         var decodedName = StringUtils.decodeBase64(directoryName);
 
-        log.log(Level.INFO, "Getting objects for directory " + decodedName + ". (Decoded from " + directoryName + ")");
+        log.log(Level.INFO, "Getting objects for directory " + decodedName + " (Decoded from " + directoryName + ")");
         var directoryContents = minioClient.listObjects(ListObjectsArgs.builder()
                 .bucket(bucketName)
                 .prefix(decodedName)
                 .recursive(false)
                 .build());
-
-        if (Iterables.size(directoryContents) == 0) {
-            return Collections.emptyList();
-        }
+        log.log(Level.INFO, "Contents of directory: ");
 
         List<ItemResponse> items = new ArrayList<>();
         for(Result<Item> itemResult : directoryContents) {
             var item = itemResult.get();
+            log.log(Level.INFO, item.objectName());
             if (item.isDir()) {
                 items.add(new ItemResponse(item.objectName(), item.isDir()));
                 continue;
