@@ -1,11 +1,11 @@
 package nl.hemiron.objectstorage.service;
 
+import lombok.extern.java.Log;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.RequestEntity;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
@@ -14,7 +14,9 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.net.URI;
+import java.util.logging.Level;
 
+@Log
 @Service
 public class ExchangeService {
 
@@ -36,5 +38,7 @@ public class ExchangeService {
         );
 
         restTemplate.exchange(requestEntity, void.class);
+
+        log.log(Level.INFO, "Uploaded file " + file.getName());
     }
 }
