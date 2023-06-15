@@ -1,5 +1,5 @@
 image: registry.inf-hsleiden.nl/2223.ipsenh-p3/s3
-imageTag: 0.0.9
+imageTag: 0.0.10
 imagePullPolicy: "IfNotPresent"
 name: s3-service
 
