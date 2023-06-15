@@ -185,11 +185,21 @@ public class MinioService {
         var decodedName = StringUtils.decodeBase64(directoryName);
 
         log.log(Level.INFO, "Getting objects for directory " + decodedName + " (Decoded from " + directoryName + ")");
-        var directoryContents = minioClient.listObjects(ListObjectsArgs.builder()
-                .bucket(bucketName)
-                .prefix(decodedName)
-                .recursive(false)
-                .build());
+
+        Iterable<Result<Item>> directoryContents;
+
+        if (decodedName.equals("/")) {
+            directoryContents = minioClient.listObjects(ListObjectsArgs.builder()
+                    .bucket(bucketName)
+                    .recursive(false)
+                    .build());
+        } else {
+            directoryContents = minioClient.listObjects(ListObjectsArgs.builder()
+                    .bucket(bucketName)
+                    .prefix(decodedName)
+                    .recursive(false)
+                    .build());
+        }
         log.log(Level.INFO, "Contents of directory: ");
 
         List<ItemResponse> items = new ArrayList<>();
