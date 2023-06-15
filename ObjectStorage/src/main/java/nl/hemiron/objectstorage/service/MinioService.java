@@ -13,7 +13,6 @@ import lombok.extern.java.Log;
 import nl.hemiron.objectstorage.exceptions.BucketNotEmptyException;
 import nl.hemiron.objectstorage.exceptions.BucketNotFoundException;
 import nl.hemiron.objectstorage.exceptions.InvalidProjectIdException;
-import nl.hemiron.objectstorage.exceptions.NotFoundException;
 import nl.hemiron.objectstorage.model.response.CreateBucketResponse;
 import nl.hemiron.objectstorage.model.response.DeleteBucketResponse;
 import nl.hemiron.objectstorage.model.response.GetBucketResponse;
