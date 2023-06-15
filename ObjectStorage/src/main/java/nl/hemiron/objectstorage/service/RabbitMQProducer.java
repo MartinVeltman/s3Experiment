@@ -11,21 +11,21 @@ import java.util.logging.Level;
 @Log
 @Component
 public class RabbitMQProducer {
-    @Value("${rabbitmq.exchange.name}")
-    private String exchange;
-
-    @Value("${rabbitmq.routing.key}")
-    private String routingKey;
-
-    private final RabbitTemplate rabbitTemplate;
+//    @Value("${rabbitmq.exchange.name}")
+//    private String exchange;
+//
+//    @Value("${rabbitmq.routing.key}")
+//    private String routingKey;
+//
+//    private final RabbitTemplate rabbitTemplate;
 
     @Autowired
     public RabbitMQProducer(RabbitTemplate rabbitTemplate) {
-        this.rabbitTemplate = rabbitTemplate;
+//        this.rabbitTemplate = rabbitTemplate;
     }
 
     public void sendMessage(String message) {
         log.log(Level.INFO, "Sending message to RabbitMQ: " + message);
-        rabbitTemplate.convertAndSend(exchange, routingKey, message);
+//        rabbitTemplate.convertAndSend(exchange, routingKey, message);
     }
 }
