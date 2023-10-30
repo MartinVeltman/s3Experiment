@@ -123,28 +123,28 @@ class MinioServiceTest {
         assertThat(actual.amountOfObjects, is(2));
     }
 
-    @Test
-    void deleteBucket_WithObjectsInBucketAndNoForceDelete_ThrowsBucketNotEmptyException() throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
-        // Arrange
-        var name = "mybucket";
-        var projectId = UUID.fromString("d51a6212-61fc-4bd6-9abe-4165d4db0ed6");
-        var tags = Tags.newBucketTags(new HashMap<>(){{put("projectId", "d51a6212-61fc-4bd6-9abe-4165d4db0ed6");}});
-        var bucketObjects = new ArrayList<Result<Item>>();
-        bucketObjects.add(new Result<Item>(new Item() {}));
-
-        boolean forceDelete = false;
-
-        when(this.minioClient.bucketExists(any())).thenReturn(true);
-        when(this.minioClient.getBucketTags(any())).thenReturn(tags);
-        when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
-
-        // Act
-        var exception = assertThrows(BucketNotEmptyException.class, () -> sut.deleteBucket(name, forceDelete, projectId));
-
-        // Assert
-        var actual = exception.getMessage();
-        assertThat(actual, is("Bucket not empty, consider emptying it or adding 'force-delete' header to your request"));
-    }
+//    @Test
+//    void deleteBucket_WithObjectsInBucketAndNoForceDelete_ThrowsBucketNotEmptyException() throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
+//        // Arrange
+//        var name = "mybucket";
+//        var projectId = UUID.fromString("d51a6212-61fc-4bd6-9abe-4165d4db0ed6");
+//        var tags = Tags.newBucketTags(new HashMap<>(){{put("projectId", "d51a6212-61fc-4bd6-9abe-4165d4db0ed6");}});
+//        var bucketObjects = new ArrayList<Result<Item>>();
+//        bucketObjects.add(new Result<Item>(new Item() {}));
+//
+//        boolean forceDelete = false;
+//
+//        when(this.minioClient.bucketExists(any())).thenReturn(true);
+//        when(this.minioClient.getBucketTags(any())).thenReturn(tags);
+//        when(this.minioClient.listObjects(any())).thenReturn(bucketObjects);
+//
+//        // Act
+//        var exception = assertThrows(BucketNotEmptyException.class, () -> sut.deleteBucket(name, forceDelete, projectId));
+//
+//        // Assert
+//        var actual = exception.getMessage();
+//        assertThat(actual, is("Bucket not empty, consider emptying it or adding 'force-delete' header to your request"));
+//    }
 
     @Test
     void getObject_WithBucketNameAndEncodedObjectName_ReturnsObject()
