@@ -19,6 +19,7 @@ import nl.hemiron.objectstorage.service.MinioService;
 import nl.hemiron.objectstorage.service.StringUtils;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.http.*;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
@@ -29,6 +30,7 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.util.UUID;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
 import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
@@ -47,6 +49,7 @@ public class ObjectController {
         this.exchangeService = exchangeService;
     }
 
+    @Async
     @PostMapping(consumes = {"multipart/form-data"})
     @Operation(summary = "Upload multipart file to bucket", responses = {
             @ApiResponse(responseCode = "200", description = "Multipart file uploaded successfully to bucket"),
@@ -54,38 +57,38 @@ public class ObjectController {
             @ApiResponse(responseCode = "404", description = "Bucket with specified name does not exist"),
             @ApiResponse(responseCode = "500", description = "Multipart file could not be uploaded due to an unexpected error")
     })
-    public ResponseEntity<UploadFileToBucketResponse> uploadFileToBucket(
+    public CompletableFuture<ResponseEntity<UploadFileToBucketResponse>> uploadFileToBucket(
             @RequestHeader("Project-Id") UUID projectId,
             @PathVariable String bucketName,
             @ModelAttribute UploadFileToBucketRequest uploadFileToBucketRequest) {
         try {
             MultipartFile multipartFile = uploadFileToBucketRequest.getObject();
-
             String objectName = uploadFileToBucketRequest.getObjectPath() + "/" + multipartFile.getOriginalFilename();
 
-            String uploadObjectURL = minioService.getUploadObjectURL(
-                    bucketName,
-                    objectName,
-                    projectId
-            );
-
-            exchangeService.put(multipartFile, uploadObjectURL);
-
-            return new ResponseEntity<>(
-                    new UploadFileToBucketResponse()
-                            .add(linkTo(methodOn(ObjectController.class).downloadObject(projectId, bucketName, StringUtils.encodeBase64(objectName))).withSelfRel()),
-                    HttpStatus.OK
-            );
-        } catch (BucketNotFoundException e) {
-            throw new NotFoundException(e.getMessage());
-        } catch (HttpClientErrorException | IllegalArgumentException e) {
-            throw new BadRequestException(e.getMessage());
-        } catch (HttpServerErrorException | ServerException | ErrorResponseException | InsufficientDataException | IOException |
-                 InvalidKeyException | InvalidResponseException | XmlParserException | InternalException |
-                 NoSuchAlgorithmException e) {
-            throw new InternalServerErrorException(e.getMessage());
+            return minioService.getUploadObjectURLAsync(bucketName, objectName, projectId)
+                    .thenApply(uploadObjectURL -> {
+                        try {
+                            exchangeService.put(multipartFile, uploadObjectURL);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                        try {
+                            return new ResponseEntity<>(
+                                    new UploadFileToBucketResponse()
+                                            .add(linkTo(methodOn(ObjectController.class).downloadObject(projectId, bucketName, StringUtils.encodeBase64(objectName))).withSelfRel()),
+                                    HttpStatus.OK
+                            );
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    });
+        } catch (Exception e) {
+            CompletableFuture<ResponseEntity<UploadFileToBucketResponse>> future = new CompletableFuture<>();
+            future.completeExceptionally(new InternalServerErrorException(e.getMessage()));
+            return future;
         }
     }
+
 
     @GetMapping(value = "/{objectName}", produces = MediaType.APPLICATION_OCTET_STREAM_VALUE)
     @Operation(summary = "Download a single object", responses = {

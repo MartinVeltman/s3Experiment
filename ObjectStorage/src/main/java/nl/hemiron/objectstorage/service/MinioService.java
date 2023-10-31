@@ -112,20 +112,26 @@ public class MinioService {
         return new GetBucketResponse(bucketName, totalSize, amountOfObjects);
     }
 
-    public String getUploadObjectURL(String bucketName, String objectName, UUID projectId) throws BucketNotFoundException, ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
-        verifyBucketExists(bucketName);
-        verifyBucketBelongsToProject(bucketName, projectId);
+    public CompletableFuture<String> getUploadObjectURLAsync(String bucketName, String objectName, UUID projectId) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                verifyBucketExists(bucketName);
+                verifyBucketBelongsToProject(bucketName, projectId);
 
-        log.log(Level.INFO, "Getting presigned object URL for object: " + objectName);
+                log.log(Level.INFO, "Getting presigned object URL for object: " + objectName);
 
-        return minioClient.getPresignedObjectUrl(
-                GetPresignedObjectUrlArgs.builder()
-                        .method(Method.PUT)
-                        .bucket(bucketName)
-                        .object(objectName)
-                        .expiry(60 * 60) // TODO: Discuss what would be a reasonable expiry time
-                        .build()
-        );
+                return minioClient.getPresignedObjectUrl(
+                        GetPresignedObjectUrlArgs.builder()
+                                .method(Method.PUT)
+                                .bucket(bucketName)
+                                .object(objectName)
+                                .expiry(60 * 60) // TODO: Discuss what would be a reasonable expiry time
+                                .build()
+                );
+            } catch (Exception e) {
+                throw new RuntimeException(e.getMessage());
+            }
+        });
     }
 
     public GetObjectResponse getObject(String bucketName, String objectName, UUID projectId) throws ServerException, InsufficientDataException, ErrorResponseException, IOException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
@@ -188,8 +194,7 @@ public class MinioService {
                         .build());
                 log.log(Level.INFO, "Deleted bucket " + bucketName);
                 return new DeleteBucketResponse(bucketName);
-            }
-            catch (Exception e) {
+            } catch (Exception e) {
                 throw new RuntimeException(e.getMessage());
             }
         });
